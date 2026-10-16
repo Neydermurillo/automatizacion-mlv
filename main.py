@@ -1,5 +1,6 @@
+from logging import config
 import sys
-
+from dataclasses import replace
 from playwright.sync_api import sync_playwright
 
 from src.config import Config, cargar_config
@@ -19,6 +20,23 @@ from src.validacion import (
 
 MAX_ERRORES_SEGUIDOS = 3
 
+
+
+OPCIONES_PAGO = {
+    "1": "PAGO EN EFECTIVO",
+    "3": "Transferencia Caja social",
+}
+
+
+def elegir_forma_pago_consola() -> str:
+    print("\nForma de pago para esta corrida:")
+    for clave, nombre in OPCIONES_PAGO.items():
+        print(f"  {clave}. {nombre}")
+    while True:
+        respuesta = input("Escribe 1 o 3: ").strip()
+        if respuesta in OPCIONES_PAGO:
+            return OPCIONES_PAGO[respuesta]
+        print("Opción no válida. Escribe 1 o 3.")
 
 def procesar(
     registro: RegistroExcel, pagina_ce: ComprobanteEgresoPage, config: Config, logger
@@ -109,6 +127,8 @@ def procesar(
 def main() -> None:
     limite = int(sys.argv[1]) if len(sys.argv) > 1 else None
     config = cargar_config()
+    config = replace(config, forma_pago=elegir_forma_pago_consola())
+    print(f"Forma de pago elegida: {config.forma_pago}")
     desde = int(sys.argv[2]) if len(sys.argv) > 2 else None   # <- esta línea faltaba
     logger = crear_logger(config.dir_logs)
     
