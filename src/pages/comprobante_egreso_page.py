@@ -23,24 +23,36 @@ class NavegacionError(Exception):
 class ComprobanteEgresoPage:
     COLUMNAS_GRILLA = 9  # Número, Suc, Prefijo, NIT, Nombre, Fecha, Valor, Usuario, Anulado
     FILAS_POR_PAGINA = 20
-    ESPERA_VACIO_S = 4  # segundos de grilla vacía antes de dar el NIT por "sin comprobantes"
+    TEXTO_SIN_DATOS = "No hay documentos disponibles"  # mensaje de la grilla sin resultados
+    ESPERA_VACIO_S = 6  # segundos de grilla vacía antes de dar el NIT por "sin comprobantes"
     RE_MOSTRANDO = re.compile(r"Mostrando\s+(\d+)\s*-\s*(\d+)\s+de\s+(\d+)")
+
+    # Textos propios de cada módulo; ReciboCajaPage los sobrescribe.
+    NOMBRE_MENU = "Comprobante Egreso"
+    TEXTO_PANTALLA = "Generar comprobantes de egreso por pagos"
+    TITULO_CONSULTA = "Comprobante Egreso [Consulta]"
+    TITULO_FORMULARIO = "Comprobante Egreso [Formulario]"
+
     def __init__(self, page: Page, config: Config, logger: logging.Logger):
         self.page = page
         self.config = config
         self.logger = logger
 
     def abrir(self) -> None:
-        """Navega: Carteras CCxCP -> Principal -> Comprobante Egreso."""
-        self.logger.info("Navegando a Comprobante Egreso")
+        """Navega: Carteras CCxCP -> Principal -> (módulo del documento)."""
+        self.logger.info(f"Navegando a {self.NOMBRE_MENU}")
 
-        
-        self._clic_menu("Carteras CCxCP")
-        self._clic_menu("Principal")
-        self._clic_menu("Comprobante Egreso")
+        # El menú es un árbol que se pliega al pulsar un padre ya abierto: si la opción
+        # del módulo ya se ve, se pulsa directamente.
+        if self._opcion_de_menu_visible(self.NOMBRE_MENU):
+            self.logger.info("Menú ya desplegado; se va directo al módulo")
+        else:
+            self._clic_menu("Carteras CCxCP")
+            self._clic_menu("Principal")
+        self._clic_menu(self.NOMBRE_MENU)
 
         try:
-            self.page.get_by_text("Generar comprobantes de egreso por pagos").wait_for(
+            self.page.get_by_text(self.TEXTO_PANTALLA).first.wait_for(
                 timeout=self.config.timeout_ms
             )
         except PWTimeout:
@@ -49,8 +61,18 @@ class ComprobanteEgresoPage:
             self.page.screenshot(path=str(ruta))
             raise NavegacionError(f"No cargó la pantalla de consulta. Pantallazo en {ruta}")
 
-        self.logger.info("Pantalla de Comprobante Egreso lista")
+        self.logger.info(f"Pantalla de {self.NOMBRE_MENU} lista")
         self.cerrar_formularios_abiertos()
+
+    def _opcion_de_menu_visible(self, texto: str) -> bool:
+        """True si esa opción del árbol de menú está a la vista."""
+        return (
+            self.page.locator("div.colOP2")
+            .filter(has_text=re.compile(rf"^\s*{re.escape(texto)}\s*$"))
+            .locator("visible=true")
+            .count()
+            > 0
+        )
 
     def _clic_menu(self, texto: str) -> None:
         """Espera la primera coincidencia VISIBLE del texto y le hace clic."""
@@ -60,13 +82,23 @@ class ComprobanteEgresoPage:
             .first
         )
         opcion.wait_for(state="visible", timeout=self.config.timeout_ms)
+        self._esperar_sin_mascaras()
         opcion.click()
         self.logger.info(f"Clic en menú: {texto}")
 
+    def _esperar_sin_mascaras(self, timeout_s: int = 15) -> None:
+        """Espera a que desaparezcan las máscaras 'Cargando…', que tapan los clics."""
+        limite = time.monotonic() + timeout_s
+        while time.monotonic() < limite:
+            if self.page.locator(".x-mask:visible").count() == 0:
+                return
+            self.page.wait_for_timeout(300)
+        self.logger.warning("Sigue visible una máscara de carga; se continúa")
+
     def _ventana_consulta(self) -> Locator:
-        """Ventana 'Comprobante Egreso [Consulta]' (hay otras ventanas detrás)."""
+        """Ventana de la Consulta del módulo (hay otras ventanas detrás)."""
         return self.page.get_by_role("dialog").filter(
-            has_text="Comprobante Egreso [Consulta]"
+            has_text=self.TITULO_CONSULTA
         )
 
     def _esperar_consulta_cargada(self, timeout_s: int = 6) -> None:
@@ -110,7 +142,7 @@ class ComprobanteEgresoPage:
                     f"Intento {intento} falló: {' '.join(str(e).split())[:200]}"
                 )
                 try:
-                    ventana.get_by_text("Generar comprobantes de egreso por pagos").first.click(
+                    ventana.get_by_text(self.TEXTO_PANTALLA).first.click(
                         timeout=3000
                     )
                 except PWTimeout:
@@ -133,7 +165,119 @@ class ComprobanteEgresoPage:
         """'98,546,647' -> '98546647'."""
         return "".join(c for c in str(texto) if c.isdigit())
 
-    def buscar_nit(self, nit: str, timeout_s: int = 10) -> list[list[str]]:
+    def buscar_nit(self, nit: str, timeout_s: int = 14) -> list[list[str]]:
+        """Busca un NIT; si la grilla sale vacía repite la búsqueda una vez para confirmarlo.
+
+        El servidor a veces responde tarde y la grilla muestra su mensaje de 'sin datos'
+        antes de que lleguen las filas. Un NIT solo se da por "sin comprobantes" si dos
+        búsquedas seguidas salen vacías.
+        """
+        filas = self._buscar_nit_una_vez(nit, timeout_s)
+        if filas:
+            return filas
+        self.logger.warning(f"NIT {self._solo_digitos(nit)}: vacío; se repite la búsqueda")
+        self.page.wait_for_timeout(3000)
+        return self._buscar_nit_una_vez(nit, timeout_s)
+
+    def _enfocar_caja_busqueda(self, caja: Locator) -> None:
+        """Clic en la caja de búsqueda; si no responde, diagnostica y reabre la pantalla.
+
+        Tras cerrar formularios la Consulta a veces queda tapada u oculta y el clic espera
+        30 s para nada. Se prueba con 8 s; si falla se registra qué hay encima de la caja,
+        se vuelve a abrir la pantalla desde el menú y se reintenta una vez.
+        """
+        try:
+            caja.click(timeout=8000)
+            return
+        except PWTimeout as e:
+            self.logger.warning(
+                f"La caja de búsqueda no responde: {' '.join(str(e).split())[:400]}"
+            )
+        try:
+            info = caja.evaluate(
+                """el => {
+                    const r = el.getBoundingClientRect();
+                    const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+                    const dlg = top ? top.closest('[role=dialog]') : null;
+                    return {
+                        visible: el.offsetParent !== null,
+                        rect: [r.x, r.y, r.width, r.height].map(Math.round),
+                        encima: top ? top.tagName + '.' + String(top.className).slice(0, 60) : null,
+                        ventana_encima: dlg ? dlg.innerText.replace(/\\s+/g, ' ').slice(0, 90) : null,
+                    };
+                }""",
+                timeout=3000,
+            )
+            self.logger.warning(f"Estado de la caja de búsqueda: {info}")
+        except Exception:
+            self.logger.exception("No se pudo diagnosticar la caja de búsqueda")
+        self.logger.warning(f"Ventanas abiertas: {self._describir_ventanas()}")
+        cerro_formularios = self._cerrar_formularios_ajenos()
+        if self._cerrar_consultas_ajenas() or cerro_formularios:
+            try:
+                caja.click(timeout=8000)
+                return
+            except PWTimeout:
+                self.logger.warning("Sigue sin responder tras cerrar la otra Consulta")
+        self.abrir()
+        self.fijar_filtros()
+        caja.click(timeout=8000)
+
+    def _cerrar_formularios_ajenos(self) -> bool:
+        """Cierra formularios 'Insertando' de OTROS módulos (p. ej. uno de Comprobante Egreso
+        encima de la Consulta de Recibos). Si uno no está 'Insertando' no lo toca y avisa.
+        Nunca presiona Aceptar ni Grabar."""
+        ajenos = (
+            self.page.get_by_role("dialog")
+            .filter(has_text=re.compile(r"\[Formulario\]"))
+            .filter(has_not_text=self.TITULO_FORMULARIO)
+        )
+        cerrados = 0
+        for _ in range(5):
+            if ajenos.count() == 0:
+                break
+            ventana = ajenos.last
+            if ventana.get_by_text("Insertando", exact=True).locator("visible=true").count() == 0:
+                self._captura_segura("error_formulario_ajeno")
+                raise NavegacionError(
+                    "Hay un formulario de otro módulo que no está 'Insertando'. "
+                    "Revísalo y ciérralo a mano."
+                )
+            id_ventana = ventana.get_attribute("id", timeout=3000)
+            self.logger.warning(
+                "Se cierra un formulario 'Insertando' de otro módulo que tapaba la pantalla"
+            )
+            fijo = self.page.locator(f'[id="{id_ventana}"]') if id_ventana else ventana
+            self._cerrar_ventana_formulario(fijo)
+            cerrados += 1
+        return cerrados > 0
+
+    def _cerrar_consultas_ajenas(self) -> bool:
+        """Cierra las Consultas de OTROS módulos que tapan la nuestra (p. ej. la de egresos
+        encima de la de recibos). Solo cierra ventanas de Consulta con su X; no toca formularios."""
+        ajenas = (
+            self.page.get_by_role("dialog")
+            .filter(has_text=re.compile(r"\[Consulta\]"))
+            .filter(has_not_text=self.TITULO_CONSULTA)
+        )
+        cerradas = 0
+        for _ in range(ajenas.count()):
+            if ajenas.count() == 0:
+                break
+            try:
+                ajenas.last.locator(".x-tool-close").first.click(timeout=3000)
+                cerradas += 1
+                self.page.wait_for_timeout(1000)
+            except Exception as e:
+                self.logger.warning(
+                    f"No se pudo cerrar una Consulta ajena: {' '.join(str(e).split())[:200]}"
+                )
+                break
+        if cerradas:
+            self.logger.warning(f"Se cerraron {cerradas} Consulta(s) de otro módulo que tapaban")
+        return cerradas > 0
+
+    def _buscar_nit_una_vez(self, nit: str, timeout_s: int) -> list[list[str]]:
         """Busca un NIT y devuelve todas sus filas (todas las páginas).
 
         Devuelve [] solo si la grilla queda vacía de forma sostenida (NIT sin
@@ -144,7 +288,7 @@ class ComprobanteEgresoPage:
         nit_buscado = self._solo_digitos(nit)
 
         self.logger.info(f"Buscando NIT {nit_buscado}")
-        caja.click()
+        self._enfocar_caja_busqueda(caja)
         caja.press("Control+A")
         caja.press("Backspace")
         caja.press_sequentially(nit_buscado, delay=80)
@@ -160,8 +304,12 @@ class ComprobanteEgresoPage:
             if ventana.locator("tr.x-grid-row").count() == 0:
                 vacio_desde = vacio_desde or time.monotonic()
                 if time.monotonic() - vacio_desde >= self.ESPERA_VACIO_S:
-                    self.logger.info(f"NIT {nit_buscado}: grilla vacía, sin comprobantes")
-                    return []
+                    # Grilla vacía NO basta: puede ser una respuesta lenta del servidor.
+                    # Solo se da por "sin comprobantes" si la grilla muestra su mensaje.
+                    mensaje = ventana.get_by_text(self.TEXTO_SIN_DATOS).locator("visible=true")
+                    if mensaje.count() > 0:
+                        self.logger.info(f"NIT {nit_buscado}: grilla vacía, sin comprobantes")
+                        return []
                 self.page.wait_for_timeout(400)
                 continue
 
@@ -331,7 +479,7 @@ class ComprobanteEgresoPage:
         """El formulario más reciente (el de delante si hubiera varios)."""
         return (
             self.page.get_by_role("dialog")
-            .filter(has_text="Comprobante Egreso [Formulario]")
+            .filter(has_text=self.TITULO_FORMULARIO)
             .last
         )
 
@@ -567,6 +715,7 @@ class ComprobanteEgresoPage:
 
         for ronda in range(1, max_rondas + 1):
             self._cancelar_ventanas_de_pago()
+            self._cerrar_formularios_ajenos()
             if cuadro.count():
                 self.logger.warning("Cuadro de cartera abierto; se cancela")
                 cuadro.get_by_text("Cancelar", exact=True).locator(
@@ -638,9 +787,9 @@ class ComprobanteEgresoPage:
         return f"consecutivo={info['consecutivo']} | herramientas={info['herramientas']}"
 
 
-    def _cerrar_ventana_formulario(self, max_clics: int = 3) -> None:
+    def _cerrar_ventana_formulario(self, ventana: Locator | None = None, max_clics: int = 3) -> None:
         """Cierra el formulario con la X de su cabecera, respondiendo las preguntas que salgan."""
-        formulario = self._formulario()
+        formulario = ventana if ventana is not None else self._formulario()
         for n in range(1, max_clics + 1):
             boton = formulario.locator(".x-tool-after-title:has(.x-tool-close)")
             if boton.count() == 0:

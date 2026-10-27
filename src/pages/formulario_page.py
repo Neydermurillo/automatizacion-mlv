@@ -7,6 +7,10 @@ from playwright.sync_api import Locator, TimeoutError as PWTimeout
 from src.pages.comprobante_egreso_page import ComprobanteEgresoPage, NavegacionError
 from src.validacion import parsear_fecha, parsear_monto
 
+class CarteraIncompleta(NavegacionError):
+    """El cuadro de cartera no carga en pantalla todos sus documentos: se revisa a mano."""
+
+
 class CargaIncierta(Exception):
     """No se puede asegurar si el comprobante quedó grabado. Detiene toda la corrida."""
 
@@ -21,6 +25,8 @@ class FormularioComprobante:
         self.page = consulta.page
         self.config = consulta.config
         self.logger = consulta.logger
+        self.resumen_marcados = ""  # desglose de la última marcación, para explicar diferencias
+        self._ids_columnas: tuple[str, str, str] | None = None
 
     def cargar_cliente(self, nit: str) -> None:
         """Escribe el NIT en 'Cliente', da Enter y confirma que cargó ese cliente."""
@@ -70,6 +76,8 @@ class FormularioComprobante:
                     .map(h => ({id: h.id, texto: h.innerText.trim()}));
                 const filas = Array.from(el.querySelectorAll('tr.x-grid-row')).map(tr => {
                     const celdas = {};
+                    const tabla = tr.closest('table');
+                    celdas['__id'] = tabla ? tabla.id : '';
                     tr.querySelectorAll('td').forEach(td => {
                         const clase = Array.from(td.classList)
                             .find(c => c.startsWith('x-grid-cell-gridcolumn'));
@@ -93,63 +101,208 @@ class FormularioComprobante:
                 return int(m.group(3))
         return None
 
+    def _leer_mostrando(self) -> tuple[int, int, int] | None:
+        """(desde, hasta, total) de 'Mostrando X - Y de Z' del cuadro de cartera, o None."""
+        textos = (
+            self.c._cuadro_cartera()
+            .get_by_text(ComprobanteEgresoPage.RE_MOSTRANDO)
+            .all_inner_texts()
+        )
+        for texto in textos:
+            m = ComprobanteEgresoPage.RE_MOSTRANDO.search(texto)
+            if m:
+                return int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return None
+
+    def _mover_cuadro(self, y: int | None = None) -> dict | None:
+        """Mueve (o solo lee) el desplazamiento de la grilla del cuadro de cartera."""
+        return self.c._cuadro_cartera().evaluate(
+            """(el, y) => {
+                const v = Array.from(el.querySelectorAll('.x-grid-view'))
+                    .find(x => x.offsetParent !== null);
+                if (!v) return null;
+                if (y !== null) v.scrollTop = y;
+                return {arriba: v.scrollTop, total: v.scrollHeight, alto: v.clientHeight};
+            }""",
+            y,
+        )
+
+    def _esperar_render_estable(self, timeout_s: float = 3.0) -> None:
+        """Espera a que la grilla termine de dibujar las filas tras moverla o cambiar de página."""
+        cuadro = self.c._cuadro_cartera()
+        js = "el => Array.from(el.querySelectorAll('tr.x-grid-row')).map(tr => (tr.closest('table') || {}).id).join(',')"
+        limite = time.monotonic() + timeout_s
+        anterior = None
+        self.page.wait_for_timeout(250)
+        while time.monotonic() < limite:
+            actual = cuadro.evaluate(js)
+            if actual == anterior:
+                return
+            anterior = actual
+            self.page.wait_for_timeout(250)
+
     def marcar_documentos(self, anio: int) -> tuple[int, Decimal]:
         """Da Enter en la celda 'Fecha' de cada documento del año indicado.
 
+        El cuadro divide la cartera en páginas de hasta 200 documentos y cada página solo
+        dibuja unas 49 filas a la vez (el resto aparece al desplazarse). Por eso se recorre
+        página por página y, dentro de cada una, por tandas; cada documento se identifica por
+        el id de su fila. Las marcas se conservan al cambiar de página (comprobado). Al final
+        de cada página se exige haber visto TODOS sus documentos y al final de todas, el total
+        de 'Mostrando'; si no, se lanza CarteraIncompleta (nada se acepta).
+
         Devuelve (filas marcadas, suma de sus saldos). NO presiona Aceptar.
         """
+        est = {
+            "marcadas": 0, "suma": Decimal(0), "n_pos": 0, "n_neg": 0,
+            "suma_pos": Decimal(0), "suma_neg": Decimal(0), "abonos": Decimal(0),
+        }
+        self._ids_columnas = None
+        pag = self._leer_mostrando()
+        total = pag[2] if pag else None
+        recorridos = 0
+        for _pagina in range(1, 51):
+            esperado = (pag[1] - pag[0] + 1) if pag else None
+            self._mover_cuadro(0)
+            self._esperar_render_estable()
+            recorridos += self._marcar_pagina(anio, esperado, est)
+            if pag is None or pag[1] >= pag[2]:
+                break
+            self._pagina_siguiente(pag[1] + 1)
+            pag = self._leer_mostrando()
+            if pag is None:
+                raise NavegacionError("Se perdió el texto 'Mostrando' al cambiar de página")
+        else:
+            raise CarteraIncompleta("El cuadro tiene más de 50 páginas")
+
+        if total is not None and recorridos != total:
+            raise CarteraIncompleta(
+                f"El cuadro indica {total} documentos pero solo se pudieron recorrer {recorridos}"
+            )
+        self.logger.info(
+            f"Documentos de {anio} marcados: {est['marcadas']} de {recorridos} recorridos"
+        )
+        self.resumen_marcados = (
+            f"marcados: {est['n_pos']} con saldo positivo (suma {est['suma_pos']}) y "
+            f"{est['n_neg']} con saldo negativo (suma {est['suma_neg']}); "
+            f"abonos marcados suman {est['abonos']}"
+        )
+        self.logger.info(f"Desglose de lo marcado: {self.resumen_marcados}")
+        return est["marcadas"], est["suma"]
+
+    def _marcar_pagina(self, anio: int, esperado: int | None, est: dict) -> int:
+        """Marca los documentos del año de la página actual; devuelve cuántos documentos vio."""
+        vistos: set[str] = set()
+        # Tres barridos como máximo: bajando de a 300 px, subiendo de a 150 y bajando de a 100.
+        # El primero basta casi siempre; los otros cubren filas que la grilla no dibujó a tiempo.
+        for paso in (300, -150, 100):
+            self._barrer(anio, esperado, vistos, est, paso)
+            if esperado is None or len(vistos) >= esperado:
+                break
+        if esperado is not None and len(vistos) != esperado:
+            raise CarteraIncompleta(
+                f"La página indica {esperado} documentos pero solo se pudieron recorrer {len(vistos)}"
+            )
+        return len(vistos)
+
+    def _barrer(
+        self, anio: int, esperado: int | None, vistos: set, est: dict, paso: int
+    ) -> None:
+        for _ in range(200):
+            self._procesar_filas_dibujadas(anio, vistos, est)
+            if esperado is not None and len(vistos) >= esperado:
+                return
+            pos = self._mover_cuadro()
+            if pos is None:
+                return
+            if paso > 0 and pos["arriba"] + pos["alto"] >= pos["total"] - 2:
+                return
+            if paso < 0 and pos["arriba"] <= 0:
+                return
+            self._mover_cuadro(max(pos["arriba"] + paso, 0))
+            self._esperar_render_estable()
+
+    def _procesar_filas_dibujadas(self, anio: int, vistos: set, est: dict) -> None:
         cuadro = self.c._cuadro_cartera()
         datos = self._leer_cuadro()
-        encabezados, filas_txt = datos["encabezados"], datos["filas"]
+        if self._ids_columnas is None:
+            def id_columna(nombre: str) -> str:
+                hallados = [h["id"] for h in datos["encabezados"] if h["texto"] == nombre]
+                if len(hallados) != 1:
+                    raise NavegacionError(
+                        f"Columna '{nombre}' no encontrada de forma única: "
+                        f"{[h['texto'] for h in datos['encabezados']]}"
+                    )
+                return hallados[0]
 
-        def id_columna(nombre: str) -> str:
-            ids = [h["id"] for h in encabezados if h["texto"] == nombre]
-            if len(ids) != 1:
-                raise NavegacionError(
-                    f"Columna '{nombre}' no encontrada de forma única: "
-                    f"{[h['texto'] for h in encabezados]}"
-                )
-            return ids[0]
+            self._ids_columnas = (id_columna("Fecha"), id_columna("Saldo"), id_columna("Abono"))
+        ids = self._ids_columnas
+        id_fecha, id_saldo, id_abono = ids
 
-        id_fecha, id_saldo, id_abono = id_columna("Fecha"), id_columna("Saldo"), id_columna("Abono")
-
-        if not filas_txt:
+        if not datos["filas"] and not vistos:
             raise NavegacionError("El cuadro de cartera no tiene filas")
-        for fila in filas_txt:
-            if not all(i in fila for i in (id_fecha, id_saldo, id_abono)):
+
+        for fila in datos["filas"]:
+            rid = fila.get("__id")
+            if not rid:
+                raise NavegacionError("Las filas del cuadro no traen un id estable")
+            if rid in vistos:
+                continue
+            if not all(i in fila for i in ids):
                 raise NavegacionError(
                     "No se pudieron asociar las celdas de la fila con sus columnas "
                     "(las celdas no traen el id de la columna)"
                 )
-        total = self._total_filas_cuadro()
-        if total is not None and total != len(filas_txt):
-            raise NavegacionError(
-                f"El cuadro indica {total} documentos pero solo hay {len(filas_txt)} filas "
-                "cargadas en pantalla"
-            )
-        if any(fila[id_abono] for fila in filas_txt):
-            raise NavegacionError("El cuadro ya tenía abonos antes de empezar")
-
-        filas = cuadro.locator("tr.x-grid-row")
-        marcadas, suma = 0, Decimal(0)
-        for idx, fila in enumerate(filas_txt):
+            if fila[id_abono]:
+                raise NavegacionError("El cuadro ya tenía abonos antes de empezar")
             if parsear_fecha(fila[id_fecha]).year != anio:
+                vistos.add(rid)
                 continue
-            filas.nth(idx).locator(f"td.x-grid-cell-{id_fecha}").click()
-            self.page.keyboard.press("Enter")
-
-            limite = time.monotonic() + 5
-            while time.monotonic() < limite:
-                if filas.nth(idx).locator(f"td.x-grid-cell-{id_abono}").inner_text().strip():
-                    break
-                self.page.wait_for_timeout(200)
+            # Si la grilla ya no dibuja esta fila (se movió sola), se deja para otro barrido.
+            if cuadro.locator(f'table[id="{rid}"] tr.x-grid-row').count() == 0:
+                continue
+            abono_txt = self._marcar_fila(rid, id_fecha, id_abono)
+            vistos.add(rid)
+            saldo = parsear_monto(fila[id_saldo])
+            est["marcadas"] += 1
+            est["suma"] += abs(saldo)
+            est["abonos"] += parsear_monto(abono_txt)
+            if saldo >= 0:
+                est["n_pos"] += 1
+                est["suma_pos"] += saldo
             else:
-                self.c._captura_segura("error_enter_fecha")
-                raise NavegacionError(f"La fila {idx + 1} no se abonó al dar Enter en la fecha")
-            marcadas += 1
-            suma += abs(parsear_monto(fila[id_saldo]))
-        self.logger.info(f"Documentos de {anio} marcados: {marcadas} de {len(filas_txt)}")
-        return marcadas, suma
+                est["n_neg"] += 1
+                est["suma_neg"] += saldo
+
+    def _pagina_siguiente(self, desde_esperado: int, timeout_s: int = 20) -> None:
+        """Pasa a la página siguiente del cuadro y espera a que muestre desde ese registro."""
+        boton = self.c._cuadro_cartera().locator("a.x-btn:has(.x-tbar-page-next)")
+        if boton.count() == 0:
+            raise NavegacionError("No se encontró el botón de página siguiente del cuadro")
+        boton.first.click()
+        limite = time.monotonic() + timeout_s
+        while time.monotonic() < limite:
+            pag = self._leer_mostrando()
+            if pag and pag[0] == desde_esperado:
+                self.page.wait_for_timeout(1000)
+                return
+            self.page.wait_for_timeout(400)
+        raise NavegacionError(f"El cuadro no pasó a mostrar desde el registro {desde_esperado}")
+
+    def _marcar_fila(self, rid: str, id_fecha: str, id_abono: str) -> str:
+        """Clic en la celda Fecha de la fila (por su id) + Enter; devuelve el texto de su Abono."""
+        fila = self.c._cuadro_cartera().locator(f'table[id="{rid}"] tr.x-grid-row')
+        fila.locator(f"td.x-grid-cell-{id_fecha}").click(timeout=10000)
+        self.page.keyboard.press("Enter")
+
+        limite = time.monotonic() + 5
+        while time.monotonic() < limite:
+            abono = fila.locator(f"td.x-grid-cell-{id_abono}").inner_text().strip()
+            if abono:
+                return abono
+            self.page.wait_for_timeout(200)
+        self.c._captura_segura("error_enter_fecha")
+        raise NavegacionError(f"El documento {rid} no se abonó al dar Enter en la fecha")
 
     def leer_abonado(self) -> Decimal:
         """Valor del total 'ABONADO' (la caja que queda bajo esa etiqueta)."""
