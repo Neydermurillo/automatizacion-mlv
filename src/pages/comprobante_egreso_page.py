@@ -794,15 +794,32 @@ class ComprobanteEgresoPage:
             boton = formulario.locator(".x-tool-after-title:has(.x-tool-close)")
             if boton.count() == 0:
                 return  # ya no hay formulario
+            if n > 1:
+                # Si una pregunta de confirmación salió tarde, se responde antes de volver a
+                # pulsar la X (la máscara de la pregunta bloquearía el clic).
+                self._responder_confirmacion_cancelar(timeout_ms=800)
+                if formulario.count() == 0:
+                    return
             self.logger.info(f"Cerrando formulario: clic {n}/{max_clics} en la X")
-            boton.first.click(timeout=5000)
+            try:
+                boton.first.click(timeout=5000)
+            except PWTimeout:
+                # Plataforma lenta o la X aún se mueve: se reintenta en lugar de abortar.
+                self.logger.warning(f"El clic {n} en la X no se pudo ejecutar; se reintenta")
+                self.page.wait_for_timeout(1500)
+                continue
 
-            limite = time.monotonic() + 8
+            # El primer clic de la X a menudo no hace nada: 4 s bastan para ver si reaccionó
+            # (antes se esperaban 8 s por intento, ~8.6 s perdidos por registro).
+            # Primer clic: si no cerró en 1,5 s casi nunca lo hará (el log muestra que el 2.º
+            # clic es el que cierra), así que se repite pronto; la pregunta de confirmación
+            # que salga tarde se responde antes del siguiente clic.
+            limite = time.monotonic() + (1.5 if n == 1 else 4)
             while time.monotonic() < limite:
                 if formulario.count() == 0:
                     return
                 if self._responder_confirmacion_cancelar(timeout_ms=500):
-                    limite = time.monotonic() + 5  # tras responder, espera un poco más
+                    limite = time.monotonic() + 4  # tras responder, espera un poco más
                 self.page.wait_for_timeout(250)
             self.logger.info(f"Cierre del formulario: el clic {n} no lo cerró; se repite")
 

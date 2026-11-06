@@ -5,4 +5,4 @@ logs/
 __pycache__/
 .venv/
 *.xlsx
-*.log
+*.logempresas.txt

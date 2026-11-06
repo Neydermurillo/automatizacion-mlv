@@ -1,0 +1,5 @@
+# Empresas de DS Nube disponibles (una por línea, tal como aparecen en la lista de empresas).
+# Para agregar una nueva: escribe su nombre en una línea nueva, o elige "Otra empresa" en la consola.
+ASOCIACION DE RECICLADORES HUELLA NATURAL E.S.P
+FUNDACION MODA Y FLORES
+

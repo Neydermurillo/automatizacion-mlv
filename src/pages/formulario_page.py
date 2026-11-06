@@ -11,6 +11,14 @@ class CarteraIncompleta(NavegacionError):
     """El cuadro de cartera no carga en pantalla todos sus documentos: se revisa a mano."""
 
 
+class CarteraVacia(CarteraIncompleta):
+    """El cuadro de cartera del NIT no tiene documentos: se revisa a mano, no es falla del robot."""
+
+
+class ClienteNoEncontrado(CarteraIncompleta):
+    """El NIT no cargó ningún cliente en el formulario: se revisa a mano, el proceso sigue."""
+
+
 class CargaIncierta(Exception):
     """No se puede asegurar si el comprobante quedó grabado. Detiene toda la corrida."""
 
@@ -44,7 +52,9 @@ class FormularioComprobante:
             self.page.wait_for_timeout(300)
         else:
             self.c._captura_segura("error_cliente")
-            raise NavegacionError(f"El cliente del NIT {digitos} no cargó")
+            raise ClienteNoEncontrado(
+                f"El cliente del NIT {digitos} no cargó (¿NIT inexistente en la plataforma?)"
+            )
 
         # El formulario muestra el NIT con comas sobre la caja (p. ej. 71,745,301)
         formateado = f"{int(digitos):,}"
@@ -240,7 +250,7 @@ class FormularioComprobante:
         id_fecha, id_saldo, id_abono = ids
 
         if not datos["filas"] and not vistos:
-            raise NavegacionError("El cuadro de cartera no tiene filas")
+            raise CarteraVacia("El cuadro de cartera no tiene documentos (sin cartera para este NIT)")
 
         for fila in datos["filas"]:
             rid = fila.get("__id")
@@ -333,10 +343,20 @@ class FormularioComprobante:
     def cancelar_cuadro(self) -> None:
         """Cierra el cuadro de cartera con Cancelar (descarta lo marcado)."""
         cuadro = self.c._cuadro_cartera()
-        cuadro.get_by_text("Cancelar", exact=True).locator("visible=true").first.click(
-            timeout=5000
-        )
-        self.c._responder_confirmacion_cancelar(timeout_ms=2000)
+        boton = cuadro.get_by_text("Cancelar", exact=True).locator("visible=true").first
+        for intento in (1, 2, 3):
+            try:
+                # Con plataforma lenta el botón puede tardar en quedar estable.
+                # En el último intento se fuerza el clic (cancelar es inofensivo).
+                boton.click(timeout=15000, force=(intento == 3))
+                break
+            except PWTimeout:
+                self.logger.warning(f"Cancelar no respondió (intento {intento}/3)")
+                if intento == 3:
+                    self.c._captura_segura("cancelar_cuadro_timeout")
+                    raise
+                self.page.wait_for_timeout(2000)
+        self.c._responder_confirmacion_cancelar(timeout_ms=3000)
         try:
             cuadro.wait_for(state="hidden", timeout=5000)
         except PWTimeout:
