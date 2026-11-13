@@ -1,5 +1,11 @@
-# Empresas de DS Nube disponibles (una por línea, tal como aparecen en la lista de empresas).
-# Para agregar una nueva: escribe su nombre en una línea nueva, o elige "Otra empresa" en la consola.
+# Empresas de DS Nube disponibles, una por línea, tal como aparecen en la lista de empresas.
+# Para agregar una nueva: escribe su nombre en una línea nueva o usa "Agregar empresa" en la ventana.
+AC DISTRIBUCIONES LA 30 SAS
+ASOCIACIÓN DE PENSIONADOS DEL SECTOR PRIVADO E INSTITUTO DE SEGUROS SOCIALES DE ANTIOQUIA Y NACIONALES
 ASOCIACION DE RECICLADORES HUELLA NATURAL E.S.P
+COMPRA Y VENTA DE METALES INDUDTRIA Y APROVECHABLES ECO FUTURO SA
+CORPORACION PARA EL DESARROLLO DE MI PAIS
 FUNDACION MODA Y FLORES
-
+M & M METALS GOLD SAS
+METRORADIOS S.A.S
+TAX FILLING CONSULTING SAS

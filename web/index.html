@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NeyBot Automatización</title>
+<style>
+  :root{
+    --bg:#e8effb; --card:#ffffff; --ink:#0a1f5c; --muted:#4b5b85; --line:#dde7f6; --borde:#c7d7f3;
+    --brand:#0a63e8; --brand-d:#0850bf; --brand-l:#e3eeff; --brand-xl:#f1f6ff;
+    --ok:#12a150; --ok-d:#0c7d3b; --ok-l:#e5f6ec; --warn:#b45309; --warn-l:#fff4e0; --bad:#d42f2f; --bad-d:#a82020; --bad-l:#fdeaea;
+    --side:#02265a;
+    --sombra:0 1px 2px rgba(10,31,92,.05),0 8px 24px rgba(10,99,232,.08);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:15px/1.4 Inter,"Segoe UI",system-ui,-apple-system,Roboto,sans-serif;display:flex}
+  button,select,input{font:inherit;color:inherit}
+
+  /* ================= barra lateral ================= */
+  aside{width:245px;flex:none;display:flex;flex-direction:column;color:#fff;position:relative;
+    background:linear-gradient(180deg,#022a63 0,#02265a 40%,#022050 100%);overflow:hidden}
+  .lado-arriba{height:346px;flex:none;display:flex;flex-direction:column;align-items:center}
+  .robot{width:245px;height:193px;flex:none;background:url(img/robot.png) top center/245px 193px no-repeat;
+    -webkit-mask-image:linear-gradient(#000 90%,transparent);mask-image:linear-gradient(#000 90%,transparent)}
+  .marca{text-align:center;padding:0 14px;margin-top:-2px}
+  .marca svg{width:46px;height:46px;display:block;margin:0 auto 3px;filter:drop-shadow(0 4px 12px rgba(31,123,255,.55))}
+  .marca .sigla{font-size:35px;line-height:1;font-weight:900;letter-spacing:5px;padding-left:5px;
+    background:linear-gradient(180deg,#fff 40%,#9cc6ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .marca .nombre{display:flex;align-items:center;gap:8px;justify-content:center;margin-top:5px;font-size:11.5px;font-weight:700;letter-spacing:3.6px;color:#8fb8ff}
+  .marca .nombre::before,.marca .nombre::after{content:"";height:1px;width:16px;background:linear-gradient(90deg,transparent,#5f9bff)}
+  .marca .nombre::after{transform:scaleX(-1)}
+  .marca .lema2{margin-top:7px;font-size:11.5px;line-height:1.3;color:#b5c7ee}
+  .lado-olas{position:absolute;left:0;right:0;bottom:92px;height:115px;background:url(img/side_bottom.png) bottom center/245px 115px no-repeat;
+    -webkit-mask-image:linear-gradient(transparent,#000 35%);mask-image:linear-gradient(transparent,#000 35%);pointer-events:none}
+  aside nav{padding:6px 14px 0;display:flex;flex-direction:column;gap:4px;position:relative;z-index:1}
+  aside nav button{all:unset;box-sizing:border-box;width:100%;padding:12px 14px;border-radius:12px;cursor:pointer;display:flex;gap:14px;align-items:center;font-size:16px;font-weight:500;color:#e8f0ff}
+  aside nav button:hover{background:rgba(255,255,255,.08)}
+  aside nav button.on{background:var(--brand);font-weight:600;box-shadow:0 4px 14px rgba(10,99,232,.45)}
+  aside nav button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  aside nav svg{width:24px;height:24px;flex:none}
+  .sistema{margin:auto 18px 20px;position:relative;z-index:1;border:1px solid rgba(255,255,255,.18);background:rgba(2,38,90,.7);border-radius:14px;padding:13px 16px;text-align:center}
+  .sistema b{display:flex;gap:10px;align-items:center;justify-content:center;font-weight:600}
+  .sistema i{width:14px;height:14px;border-radius:50%;background:#4ade3b;box-shadow:0 0 10px #4ade3b}
+  .sistema small{display:block;margin-top:3px;font-size:12px;color:#b5c7ee}
+
+  /* ================= contenido ================= */
+  main{flex:1;min-width:0;overflow:auto;position:relative;background:linear-gradient(180deg,#e9f0fc,#e4ecfa)}
+  .banner{height:142px;position:relative;background:url(img/banner.png) center/cover no-repeat,#dbe7fb;padding:22px 38px 0}
+  .banner h1{margin:0;font-size:42px;line-height:1.1;letter-spacing:-.8px;font-weight:800;color:var(--ink)}
+  .banner p{margin:6px 0 0;font-size:22px;font-weight:500;color:#13265f}
+  .lema{position:absolute;right:46px;top:24px;font:italic 600 27px/1.05 "Segoe Script","Brush Script MT","Lucida Handwriting","Comic Sans MS",cursive;color:#1456d8;transform:rotate(-5deg);text-align:left}
+  .lema svg{display:block;margin-top:2px}
+  .cuerpo{padding:0 18px 34px;margin-top:-4px}
+  .vista{display:none}.vista.on{display:block}
+
+  .paso{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sombra);padding:16px 22px 18px;margin-bottom:12px;display:flex;gap:16px}
+  .num{flex:none;width:40px;height:40px;border-radius:50%;background:var(--brand);color:#fff;font-weight:700;font-size:20px;display:grid;place-items:center;box-shadow:0 4px 10px rgba(10,99,232,.35)}
+  .paso .cu{flex:1;min-width:0}
+  .paso h2{font-size:19px;margin:6px 0 12px;font-weight:700}
+  .fila{display:flex;gap:16px;flex-wrap:wrap;align-items:stretch}
+
+  select,.campo{height:46px;border:1.5px solid var(--borde);border-radius:11px;background:#fff;padding:0 14px;min-width:0;color:var(--ink);font-weight:500}
+  select{cursor:pointer}
+  select:focus,.campo:focus{outline:2px solid var(--brand);outline-offset:0;border-color:var(--brand)}
+  .conicono{position:relative;flex:1;min-width:260px;display:flex}
+  .conicono svg{position:absolute;left:13px;top:50%;margin-top:-12px;width:24px;height:24px;color:var(--brand);pointer-events:none}
+  .conicono select{width:100%;padding-left:48px;font-size:16px;background:var(--brand-xl)}
+  .agregar{height:46px;border-radius:11px;border:1.5px solid var(--borde);background:var(--brand-l);color:var(--brand-d);font-weight:600;padding:0 22px;cursor:pointer;display:flex;gap:10px;align-items:center;font-size:15px}
+  .agregar:hover{background:#d6e6ff}
+  .agregar svg{width:20px;height:20px}
+  .agregar:focus-visible,.btn:focus-visible,.principal:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+  /* tarjetas documento */
+  .tarjetas{display:flex;gap:14px;flex:1;min-width:300px}
+  .tarjeta{flex:1;position:relative;border:1.5px solid var(--borde);border-radius:13px;padding:12px 14px 12px 14px;cursor:pointer;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:82px;font-weight:700;text-align:center;transition:background .15s,border-color .15s}
+  .tarjeta input{position:absolute;opacity:0}
+  .tarjeta::before{content:"";position:absolute;left:12px;top:12px;width:18px;height:18px;border:2px solid #9db3de;border-radius:50%;background:#fff}
+  .tarjeta svg{width:30px;height:30px;color:var(--brand)}
+  .tarjeta:has(input:checked){border-color:var(--brand);background:var(--brand-l);box-shadow:0 0 0 1px var(--brand)}
+  .tarjeta:has(input:checked)::before{border-color:var(--brand);background:radial-gradient(var(--brand) 45%,#fff 50%)}
+  .tarjeta:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:2px}
+  .anio{border-left:1.5px solid var(--line);padding-left:22px;min-width:240px}
+  .anio label{display:block;font-weight:700;font-size:17px;margin-bottom:8px}
+  .anio .conicono{min-width:0}
+  .anio select{font-size:18px;font-weight:600;padding-left:50px}
+  .nota{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;color:var(--muted);margin-top:9px}
+  .nota svg{width:20px;height:20px;color:var(--brand);flex:none;margin-top:1px}
+  .nota b{color:var(--ink)}
+
+  /* excel */
+  .excel{display:flex;gap:16px;flex-wrap:wrap}
+  .soltar{flex:1;min-width:360px;border:2px dashed #9fbdf0;border-radius:14px;background:var(--brand-xl);padding:14px 22px;display:flex;align-items:center;gap:26px;cursor:pointer;transition:background .15s,border-color .15s;min-height:128px}
+  .soltar.sobre{background:var(--brand-l);border-color:var(--brand)}
+  .soltar.listo{border-style:solid;border-color:#8fd4aa;background:var(--ok-l)}
+  .soltar img{width:92px;height:auto;flex:none}
+  .soltar .tx{flex:1;min-width:0}
+  .soltar strong{display:block;font-size:17px}
+  .soltar strong u{color:var(--brand);text-decoration:underline}
+  .soltar .sub{color:var(--muted);font-size:14px;margin:4px 0 10px;display:block}
+  .btn{height:44px;border-radius:10px;border:0;background:var(--brand);color:#fff;font-weight:700;padding:0 26px;cursor:pointer;display:inline-flex;gap:10px;align-items:center;justify-content:center;font-size:15px;box-shadow:0 4px 12px rgba(10,99,232,.3)}
+  .btn:hover{background:var(--brand-d)}
+  .btn svg{width:22px;height:22px}
+  .btn.claro{background:#fff;color:var(--brand-d);border:1.5px solid var(--borde);box-shadow:none}
+  .btn.claro:hover{background:var(--brand-l)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .ejemplo{width:268px;flex:none;border-radius:14px;background:linear-gradient(180deg,#e9f1ff,#dce9fd);border:1px solid var(--line);padding:12px 16px}
+  .ejemplo b{display:block;font-size:14px;margin-bottom:7px}
+  .ejemplo .cj{display:flex;gap:14px;align-items:center}
+  .mini{width:84px;flex:none;border:1.5px solid #a9c1ee;border-radius:6px;background:#fff;overflow:hidden}
+  .mini i{display:grid;grid-template-columns:repeat(3,1fr);height:13px;border-bottom:1px solid #d5e1f6}
+  .mini i:first-child{background:#2f8f5b;height:15px}
+  .mini i span{border-right:1px solid #d5e1f6}.mini i span:last-child{border:0}
+  .ejemplo ul{list-style:none;margin:0;padding:0;font-size:13.5px;display:grid;gap:4px}
+  .ejemplo li{display:flex;gap:8px;align-items:center}
+  .ejemplo li svg{width:16px;height:16px;color:var(--ok);flex:none}
+
+  /* forma de pago */
+  .formas{display:flex;gap:34px;flex-wrap:wrap;align-items:center;padding:2px 0 4px}
+  .fp{position:relative;display:flex;gap:11px;align-items:center;cursor:pointer;font-size:16px;font-weight:500}
+  .fp input{position:absolute;opacity:0}
+  .fp::before{content:"";width:20px;height:20px;border:2px solid #9db3de;border-radius:50%;background:#fff;flex:none}
+  .fp:has(input:checked)::before{border-color:var(--brand);background:radial-gradient(var(--brand) 45%,#fff 50%)}
+  .fp:has(input:checked){font-weight:700}
+  .fp:has(input:focus-visible){outline:2px solid var(--brand);outline-offset:4px;border-radius:6px}
+  .fp svg{width:34px;height:24px}
+  .fija{display:none;align-items:center;gap:12px;font-size:16px;font-weight:600}
+  .fija svg{width:34px;height:24px}
+  .fija small{color:var(--muted);font-weight:500}
+
+  /* modo */
+  .modo{display:inline-flex;background:var(--brand-xl);border:1.5px solid var(--borde);border-radius:12px;padding:4px;gap:4px}
+  .modo label{position:relative;padding:9px 22px;border-radius:9px;cursor:pointer;font-weight:700;color:var(--muted)}
+  .modo input{position:absolute;opacity:0}
+  .modo label:has(input:checked){background:var(--brand);color:#fff;box-shadow:0 4px 12px rgba(10,99,232,.3)}
+  .modo label.rojo:has(input:checked){background:var(--bad)}
+  .modo label:has(input:focus-visible){outline:2px solid var(--ink);outline-offset:2px}
+  .aviso{margin-top:12px;border-radius:11px;padding:12px 15px;font-size:14.5px}
+  .aviso.azul{background:var(--brand-xl);color:var(--muted);border:1px solid var(--line)}
+  .aviso.rojo{background:var(--bad-l);border:1px solid #f0b9b9;color:#7a1c1c}
+  .aviso .fila{margin-top:10px;align-items:center;gap:12px}
+  .aviso input{width:150px;text-align:center;font-weight:800;letter-spacing:1.5px}
+  .aviso .corto{width:90px}
+
+  /* resumen + ejecutar */
+  .accion{position:sticky;bottom:0;padding:6px 0 4px;background:linear-gradient(transparent,#e4ecfa 18%)}
+  .caja{display:flex;gap:18px;align-items:stretch}
+  .resumen{flex:1;min-width:0;display:flex;align-items:center;gap:20px;border-radius:18px;background:linear-gradient(180deg,#dbe8fd,#d2e2fb);border:1px solid #c3d6f5;padding:14px 22px;box-shadow:var(--sombra)}
+  .resumen>svg{width:54px;height:54px;flex:none;color:var(--brand)}
+  .rr{flex:1;min-width:0;display:grid;grid-template-columns:1.35fr 1.25fr 1.15fr .8fr .95fr;gap:0}
+  .rr>div{padding:0 18px;border-left:1.5px solid #b6cdf2;min-width:0}
+  .rr>div:first-child{border:0;padding-left:0}
+  .rr small{display:block;font-size:13.5px;font-weight:600;color:var(--ink)}
+  .rr b{display:block;font-size:14.5px;line-height:1.25;overflow-wrap:break-word}
+  .rr .t{font-size:17px;font-weight:800;margin:0 0 8px;grid-column:1/-1;padding:0;border:0}
+  .ejecutar{width:296px;flex:none;border:0;border-radius:20px;color:#fff;cursor:pointer;display:flex;align-items:center;gap:14px;justify-content:center;text-align:left;padding:0 22px;background:linear-gradient(180deg,#1fb85f,#0e8f45);box-shadow:0 8px 22px rgba(18,161,80,.4),inset 0 1px 0 rgba(255,255,255,.3)}
+  .ejecutar svg{width:40px;height:40px;flex:none}
+  .ejecutar b{display:block;font-size:20px;line-height:1.1}
+  .ejecutar small{display:block;font-size:13.5px;opacity:.92;margin-top:2px}
+  .ejecutar:hover:not(:disabled){filter:brightness(1.07)}
+  .ejecutar.rojo{background:linear-gradient(180deg,#ee4a4a,#c52626);box-shadow:0 8px 22px rgba(212,47,47,.4),inset 0 1px 0 rgba(255,255,255,.3)}
+  .ejecutar:disabled{background:#b8c6e0;box-shadow:none;cursor:not-allowed}
+  .ejecutar:focus-visible{outline:3px solid #0a1f5c;outline-offset:3px}
+  .detener{width:296px;flex:none;border-radius:20px;border:2px solid var(--bad);background:#fff;color:var(--bad);font-weight:800;font-size:18px;cursor:pointer;display:none}
+  .detener:hover{background:var(--bad-l)}
+  .detener:focus-visible{outline:3px solid #0a1f5c;outline-offset:3px}
+
+  /* actividad */
+  #actividad{display:none;margin-top:12px}
+  .cabeza{display:flex;align-items:center;gap:14px;margin-bottom:10px;flex-wrap:wrap}
+  .estado{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:16px}
+  .punto{width:11px;height:11px;border-radius:50%;background:var(--brand)}
+  .corre .punto{animation:lat 1.2s infinite}
+  @keyframes lat{50%{opacity:.25}}
+  @media (prefers-reduced-motion:reduce){.corre .punto{animation:none}}
+  .barra{flex:1;min-width:160px;height:10px;border-radius:6px;background:#cfdcf3;overflow:hidden}
+  .barra i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--brand),#4d9bff);transition:width .4s}
+  .cuenta{font-size:14px;color:var(--muted);min-width:90px;text-align:right;font-weight:600}
+  #log{background:#02265a;color:#dbe7ff;border-radius:14px;padding:14px 16px;height:290px;overflow:auto;font:12.5px/1.6 Consolas,"Cascadia Mono",monospace;box-shadow:var(--sombra)}
+  #log div{white-space:pre-wrap;word-break:break-word}
+  #log .h{color:#7f9ad0;margin-right:8px}
+  #log .WARNING{color:#ffd37a}#log .ERROR,#log .CRITICAL{color:#ff9d9d}
+  .final{display:none;margin-top:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 20px;box-shadow:var(--sombra)}
+  .conteos{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 14px}
+  .conteo{background:var(--brand-l);color:var(--brand-d);border-radius:999px;padding:5px 13px;font-size:13.5px;font-weight:700}
+  .conteo.cargado{background:var(--ok-l);color:var(--ok-d)}
+  .conteo.mal{background:var(--bad-l);color:var(--bad-d)}
+  .conteo.rev{background:var(--warn-l);color:var(--warn)}
+
+  /* listas */
+  .tabla{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sombra);overflow:hidden}
+  .item{display:flex;align-items:center;gap:14px;padding:14px 22px;border-bottom:1px solid var(--line)}
+  .item:last-child{border-bottom:0}
+  .item .t{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}
+  .item .m{color:var(--muted);font-size:13.5px;white-space:nowrap}
+  .vacio{padding:30px;text-align:center;color:var(--muted)}
+  .barra-vista{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .barra-vista .campo{flex:1;min-width:240px}
+  .peligro{all:unset;cursor:pointer;color:var(--bad);font-weight:700;padding:7px 10px;border-radius:8px}
+  .peligro:hover{background:var(--bad-l)}
+  .peligro:focus-visible{outline:2px solid var(--bad)}
+  .acerca{padding:22px 26px;line-height:1.6}
+  .acerca h3{margin:0 0 6px}
+  .acerca p{margin:0 0 10px;color:var(--muted)}
+
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 20px;border-radius:12px;display:none;z-index:9;max-width:80vw;font-weight:600}
+  #toast.mal{background:var(--bad)}
+
+  @media (max-width:1100px){
+    .rr{grid-template-columns:1fr 1fr}.rr>div:nth-child(3){border-left:0;padding-left:0}
+    .caja{flex-direction:column}.ejecutar,.detener{width:100%;height:76px}
+    .ejemplo{width:100%}.lema{display:none}
+  }
+  @media (max-width:760px){
+    body{flex-direction:column}
+    aside{width:auto;height:auto;flex-direction:row;align-items:center;overflow-x:auto}
+    .lado-arriba,.lado-olas,.sistema{display:none}
+    aside nav{flex-direction:row;padding:8px}aside nav button{white-space:nowrap}
+    .banner{padding:18px 18px 0;height:120px}.banner h1{font-size:28px}.banner p{font-size:16px}
+    .anio{border-left:0;padding-left:0;border-top:1.5px solid var(--line);padding-top:14px;width:100%}
+    .paso{padding:14px}.num{width:34px;height:34px;font-size:17px}
+    .tarjetas{flex-direction:column}
+  }
+
+  .marca .sigla{font-size:38px;letter-spacing:1px;padding-left:0;background:none;-webkit-background-clip:initial;background-clip:initial;color:#fff;font-weight:800}
+  .marca .sigla span{background:linear-gradient(135deg,#6fd0ff,#2f8cff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .marca .nombre{letter-spacing:2.4px;font-size:10.5px}
+  .alianza{margin:auto 16px 10px;position:relative;z-index:1;text-align:center;border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:11px 12px;background:rgba(2,38,90,.78)}
+  .alianza small{display:block;font-size:10px;letter-spacing:2.4px;color:#8fb8ff;font-weight:700}
+  .alianza b{display:block;margin-top:4px;font-size:14.5px;line-height:1.2;letter-spacing:.8px}
+  .firma{position:relative;z-index:1;margin:0 16px 18px;text-align:center}
+  .firma img{height:42px;display:block;margin:0 auto 2px;opacity:.95}
+  .firma span{display:block;font-size:13px;font-weight:700}
+  .firma small{display:block;font-size:11px;color:#9db8ea}
+
+  /* licencia */
+  .lic-banner{display:none;margin:14px 0 0;border-radius:14px;padding:12px 18px;font-weight:600;align-items:center;gap:14px;border:1px solid}
+  .lic-banner.info{background:#e3eeff;color:#0b3d91;border-color:#b9d1fa}
+  .lic-banner.warn{background:#fff4e0;color:#8a4a06;border-color:#f3d39a}
+  .lic-banner.bad{background:#fdeaea;color:#8c1d1d;border-color:#f0b9b9}
+  .lic-banner span{flex:1}
+  .lic-banner button{all:unset;cursor:pointer;font-weight:700;text-decoration:underline;padding:4px 6px;border-radius:6px}
+  .lic-banner button:focus-visible{outline:2px solid currentColor}
+  .lic-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+  .lic-card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sombra);padding:18px 22px}
+  .lic-card.ancha{grid-column:1/-1}
+  .lic-card h3{margin:0 0 10px;font-size:17px}
+  .lic-estado{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:18px;padding:6px 14px;border-radius:999px}
+  .lic-estado.ok{background:var(--ok-l);color:var(--ok-d)}.lic-estado.info{background:var(--brand-l);color:var(--brand-d)}
+  .lic-estado.warn{background:var(--warn-l);color:var(--warn)}.lic-estado.bad{background:var(--bad-l);color:var(--bad-d)}
+  .lic-datos{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin-top:14px;color:var(--muted)}
+  .lic-datos b{color:var(--ink)}
+  .equipo-id{font:700 22px Consolas,"Cascadia Mono",monospace;letter-spacing:2px;background:var(--brand-xl);border:1.5px dashed #9fbdf0;border-radius:12px;padding:12px 16px;display:inline-block;margin:6px 12px 8px 0}
+  .lic-card textarea{width:100%;min-height:96px;border:1.5px solid var(--borde);border-radius:11px;padding:10px 12px;font:12.5px/1.4 Consolas,"Cascadia Mono",monospace;resize:vertical;color:var(--ink);background:#fff}
+  .lic-card textarea:focus{outline:2px solid var(--brand);border-color:var(--brand)}
+  .lic-card .nota{margin:6px 0 12px}
+  @media (max-width:900px){.lic-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="lado-arriba">
+    <div class="robot" role="img" aria-label="Asistente NeyBot"></div>
+    <div class="marca">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b9bff"/><stop offset="1" stop-color="#0a4fc9"/></linearGradient></defs>
+        <path d="M32 3.5 56.5 17.7v28.6L32 60.5 7.5 46.3V17.7z" fill="url(#lg)" stroke="#9cc6ff" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M20 45V20l24 25V20" fill="none" stroke="#fff" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="46" cy="14.5" r="3.6" fill="#7df0ff"/>
+      </svg>
+      <div class="sigla">Ney<span>Bot</span></div>
+      <div class="nombre">AUTOMATIZACIÓN CONTABLE</div>
+      <div class="lema2">Tu asistente inteligente para<br>gestionar comprobantes</div>
+    </div>
+  </div>
+  <nav aria-label="Secciones">
+    <button class="on" data-v="inicio"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.8 2.6 11.2a1 1 0 0 0 .7 1.7H5V21h5.5v-6h3v6H19v-8.1h1.7a1 1 0 0 0 .7-1.7z"/></svg>Inicio</button>
+    <button data-v="historial"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2.2"/></svg>Historial</button>
+    <button data-v="empresas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V4.5A1.5 1.5 0 0 1 5.5 3h8A1.5 1.5 0 0 1 15 4.5V21"/><path d="M15 9.5h3.5A1.5 1.5 0 0 1 20 11v10"/><path d="M8 7.5h3M8 11.5h3M8 15.5h3M2.5 21h19"/></svg>Empresas</button>
+    <button data-v="licencia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.8 4.5 5.7v5.6c0 4.6 3.1 8.2 7.5 9.9 4.4-1.7 7.5-5.3 7.5-9.9V5.7z"/><path d="M8.7 12l2.4 2.4 4.3-4.6"/></svg>Licencia</button>
+    <button data-v="acerca"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v6"/><circle cx="12" cy="7.6" r=".6" fill="currentColor"/></svg>Acerca de</button>
+  </nav>
+  <div class="lado-olas" aria-hidden="true"></div>
+  <div class="alianza"><small>EN ALIANZA CON</small><b>TAX FILLING<br>CONSULTING SAS</b></div>
+  <div class="firma"><img src="img/firma.png" alt="Firma de Neyder Murrillo"><span>Neyder Murrillo</span><small>Desarrollador · Versión 1.0.0</small></div>
+</aside>
+
+<main>
+  <div class="banner">
+    <h1 id="bTitulo">NeyBot Automatización</h1>
+    <p id="bSub">Carga tu archivo y configura el proceso</p>
+    <div class="lema" aria-hidden="true">Automatiza,<br>ahorra tiempo
+      <svg width="190" height="16" viewBox="0 0 190 16" fill="none"><path d="M3 12C45 4 120 1 186 5" stroke="#1456d8" stroke-width="3.2" stroke-linecap="round"/></svg>
+    </div>
+  </div>
+
+  <div class="cuerpo">
+  <div class="lic-banner" id="licBanner" role="status"><span id="licBannerTxt"></span><button type="button" id="licBannerBtn">Ver licencia</button></div>
+
+  <!-- ================= INICIO ================= -->
+  <section class="vista on" id="v-inicio">
+
+    <div class="paso">
+      <div class="num">1</div>
+      <div class="cu">
+        <h2>Empresa con la que vas a trabajar</h2>
+        <div class="fila">
+          <div class="conicono">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V4.5A1.5 1.5 0 0 1 5.5 3h8A1.5 1.5 0 0 1 15 4.5V21"/><path d="M15 9.5h3.5A1.5 1.5 0 0 1 20 11v10"/><path d="M8 7.5h3M8 11.5h3M8 15.5h3M2.5 21h19"/></svg>
+            <select id="empresa" aria-label="Empresa"></select>
+          </div>
+          <button class="agregar" id="btnNuevaEmpresa" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg>Agregar otra empresa</button>
+        </div>
+        <div class="fila" id="nuevaEmpresa" style="display:none;margin-top:10px">
+          <input class="campo" id="nombreNueva" style="flex:1;min-width:240px" placeholder="Nombre exacto, como aparece en DS Nube" aria-label="Nombre de la nueva empresa">
+          <button class="btn" id="guardarEmpresa" type="button">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="paso">
+      <div class="num">2</div>
+      <div class="cu">
+        <h2>¿Qué documento vas a procesar?</h2>
+        <div class="fila">
+          <div class="tarjetas" role="radiogroup" aria-label="Documento">
+            <label class="tarjeta"><input type="radio" name="doc" value="egreso" checked>
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2h8l5 5v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm7 1.5V8h4.5zM8 12h8v1.6H8zm0 3.4h8V17H8z"/></svg>
+              Comprobante de egreso</label>
+            <label class="tarjeta"><input type="radio" name="doc" value="recibo">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5V8H3zM3 10h18v8.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 18.5zm3 5v2h5v-2z"/></svg>
+              Recibo de caja</label>
+          </div>
+          <div class="anio">
+            <label for="anio">Año de los documentos</label>
+            <div class="conicono">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 2h2v2h6V2h2v2h2.5A1.5 1.5 0 0 1 21 5.5v14a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-14A1.5 1.5 0 0 1 4.5 4H7zM5 9v10h14V9zm2 2h2.5v2.2H7zm3.8 0h2.5v2.2h-2.5zm3.8 0H17v2.2h-2.4zM7 14.6h2.5v2.2H7zm3.8 0h2.5v2.2h-2.5z"/></svg>
+              <select id="anio" aria-label="Año de los documentos"></select>
+            </div>
+            <div class="nota"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/></svg><span id="notaFecha"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="paso">
+      <div class="num">3</div>
+      <div class="cu">
+        <h2>Carga el archivo de Excel con los datos</h2>
+        <div class="excel">
+          <div class="soltar" id="soltar" tabindex="0" role="button" aria-label="Elegir o arrastrar el archivo de Excel">
+            <img src="img/excel.png" alt="">
+            <div class="tx">
+              <strong id="excelTitulo">Arrastra tu archivo aquí o <u>selecciona un archivo</u></strong>
+              <span class="sub" id="excelSub">Formato permitido: .xlsx (cualquier nombre)</span>
+              <button class="btn" id="btnExcel" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h5l2 2.2h8A1.5 1.5 0 0 1 21 8.7V18a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z"/></svg><span id="btnExcelTxt">Seleccionar archivo</span></button>
+            </div>
+          </div>
+          <input type="file" id="archivo" accept=".xlsx,.xlsm" hidden>
+          <div class="ejemplo">
+            <b>Ejemplo de archivo</b>
+            <div class="cj">
+              <div class="mini" aria-hidden="true"><i><span></span><span></span><span></span></i><i><span></span><span></span><span></span></i><i><span></span><span></span><span></span></i><i><span></span><span></span><span></span></i><i><span></span><span></span><span></span></i><i><span></span><span></span><span></span></i></div>
+              <ul>
+                <li><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.6 14.4L6 12l1.4-1.4 3 3 6.2-6.2L18 9z"/></svg>C: NIT</li>
+                <li><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.6 14.4L6 12l1.4-1.4 3 3 6.2-6.2L18 9z"/></svg>D: Nombre</li>
+                <li><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.6 14.4L6 12l1.4-1.4 3 3 6.2-6.2L18 9z"/></svg>H: Valor</li>
+                <li><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-1.6 14.4L6 12l1.4-1.4 3 3 6.2-6.2L18 9z"/></svg>Fila 1: encabezado</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="paso">
+      <div class="num">4</div>
+      <div class="cu">
+        <h2>Forma de pago para esta corrida</h2>
+        <div class="formas" id="formas" role="radiogroup" aria-label="Forma de pago"></div>
+        <div class="fija" id="formaFija"></div>
+      </div>
+    </div>
+
+    <div class="paso">
+      <div class="num">5</div>
+      <div class="cu">
+        <h2>¿Simular o grabar de verdad?</h2>
+        <div class="modo" role="radiogroup" aria-label="Modo">
+          <label><input type="radio" name="modo" value="sim" checked>Simulación</label>
+          <label class="rojo"><input type="radio" name="modo" value="real">Carga real</label>
+        </div>
+        <div class="aviso azul" id="avisoSim">Revisa y prepara cada documento, pero <b>no graba nada</b> en la plataforma. Úsalo para comprobar antes.</div>
+        <div class="aviso rojo" id="avisoReal" style="display:none">
+          <b>Esto graba documentos reales en producción.</b> Procesa todos los registros del archivo.
+          <div class="fila">
+            <label for="confirma">Escribe GRABAR para confirmar</label>
+            <input class="campo" id="confirma" autocomplete="off" placeholder="GRABAR">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="accion">
+      <div class="caja">
+        <div class="resumen">
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 2h6a1.5 1.5 0 0 1 1.4 1H18a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h1.6A1.5 1.5 0 0 1 9 2zm0 2v1.5h6V4zm2.2 12.6 4.5-4.6-1.2-1.2-3.3 3.4-1.4-1.4L8.6 14z"/></svg>
+          <div class="rr">
+            <div class="t">Resumen de configuración</div>
+            <div><small>Empresa</small><b id="rEmpresa">—</b></div>
+            <div><small>Documento</small><b id="rDoc">—</b></div>
+            <div><small>Forma de pago</small><b id="rForma">—</b></div>
+            <div><small>Registros</small><b id="rRegistros">—</b></div>
+            <div><small>Modo</small><b id="rModo">—</b></div>
+          </div>
+        </div>
+        <button class="detener" id="btnDetener" type="button">Detener</button>
+        <button class="ejecutar" id="btnIniciar" type="button" disabled>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3.5v17a1 1 0 0 0 1.5.9l14-8.5a1 1 0 0 0 0-1.8l-14-8.5A1 1 0 0 0 6 3.5z"/></svg>
+          <span><b id="btnTitulo">Ejecutar proceso</b><small id="btnSub">Inicia la automatización</small></span>
+        </button>
+      </div>
+    </div>
+
+    <div id="actividad">
+      <div class="cabeza">
+        <span class="estado" id="estado"><i class="punto"></i><span id="estadoTxt">Preparando…</span></span>
+        <div class="barra"><i id="progreso"></i></div>
+        <span class="cuenta" id="cuenta"></span>
+      </div>
+      <div id="log" role="log" aria-live="off" tabindex="0"></div>
+      <div class="final" id="final">
+        <strong id="finalTitulo">Terminó</strong>
+        <div class="conteos" id="conteos"></div>
+        <button class="btn" id="btnResultado" type="button">Descargar Excel de resultados</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= HISTORIAL ================= -->
+  <section class="vista" id="v-historial">
+    <div class="barra-vista" style="margin-top:14px">
+      <button class="btn" id="btnCarpeta" type="button">Abrir carpeta de resultados</button>
+    </div>
+    <div class="tabla" id="listaHistorial"></div>
+  </section>
+
+  <!-- ================= EMPRESAS ================= -->
+  <section class="vista" id="v-empresas">
+    <div class="barra-vista" style="margin-top:14px">
+      <input class="campo" id="empNueva" placeholder="Nombre exacto de la empresa" aria-label="Nombre de la empresa">
+      <button class="btn" id="empAgregar" type="button">Agregar</button>
+    </div>
+    <div class="tabla" id="listaEmpresas"></div>
+  </section>
+
+  <!-- ================= LICENCIA ================= -->
+  <section class="vista" id="v-licencia">
+    <div class="lic-grid">
+      <div class="lic-card ancha">
+        <h3>Estado de la licencia</h3>
+        <span class="lic-estado" id="licEstado">Consultando…</span>
+        <div class="lic-datos">
+          <span>Cliente</span><b id="licCliente">—</b>
+          <span>Vence</span><b id="licVence">—</b>
+          <span>Días restantes</span><b id="licDias">—</b>
+          <span>Después de vencer</span><b id="licGracia">—</b>
+        </div>
+      </div>
+      <div class="lic-card">
+        <h3>ID de este computador</h3>
+        <div class="nota" style="margin:0 0 8px">Envía este código a Neyder Murrillo para que genere tu licencia. Cada licencia sirve solo en el equipo para el que se emite.</div>
+        <span class="equipo-id" id="licEquipo">—</span>
+        <button class="btn claro" id="licCopiar" type="button">Copiar ID</button>
+      </div>
+      <div class="lic-card">
+        <h3>Activar o renovar licencia</h3>
+        <textarea id="licCodigo" placeholder="Pega aquí el código de licencia que te enviaron" aria-label="Código de licencia" spellcheck="false"></textarea>
+        <div class="nota">También puedes cargar el archivo .lic que te enviaron.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" id="licActivar" type="button">Activar licencia</button>
+          <button class="btn claro" id="licArchivoBtn" type="button">Cargar archivo .lic</button>
+          <input type="file" id="licArchivo" accept=".lic,.txt" hidden>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ACERCA DE ================= -->
+  <section class="vista" id="v-acerca">
+    <div class="tabla acerca" style="margin-top:14px">
+      <h3>NeyBot Automatización · versión 1.0.0</h3>
+      <p>Carga comprobantes de egreso y recibos de caja en DS Nube desde un Excel, un NIT a la vez, con validaciones de seguridad.</p>
+      <p>Si algún dato no coincide, el registro queda para revisión manual: el robot nunca ajusta valores.</p>
+      <p>Todo funciona en este equipo; la ventana solo acepta conexiones locales.</p>
+      <p>Desarrollado por Neyder Murrillo, en alianza con TAX FILLING CONSULTING SAS.</p>
+    </div>
+  </section>
+
+  </div>
+</main>
+<div id="toast" role="status"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+let LIC = null, TOKEN = "", INI = null, archivo = null, registrosArchivo = 0, corridaModo = "", corridaArchivo = "", simulados = new Set(), corriendo = false, indice = 0, pulso = null, totalRegs = 0, hechos = 0;
+
+const TITULOS = {
+  inicio:["NeyBot Automatización","Carga tu archivo y configura el proceso"],
+  historial:["Historial","Los Excel de resultados de cada corrida"],
+  empresas:["Empresas","Escribe el nombre exacto, como aparece en la lista de DS Nube"],
+  licencia:["Licencia","Estado y activación de tu licencia"],
+  acerca:["Acerca de","Qué hace esta herramienta"]
+};
+const ICO_EFECTIVO = `<svg viewBox="0 0 34 24"><rect x="1" y="3" width="32" height="18" rx="3" fill="#2fa84f"/><rect x="3.5" y="5.5" width="27" height="13" rx="2" fill="none" stroke="#bfeccb" stroke-width="1.2"/><circle cx="17" cy="12" r="4" fill="#bfeccb"/><text x="17" y="14.6" text-anchor="middle" font-size="7" font-weight="700" fill="#1f7a37">$</text></svg>`;
+const ICO_BANCO = `<svg viewBox="0 0 34 24"><path d="M17 1 3 7.5v2h28v-2z" fill="#0a63e8"/><rect x="6" y="11" width="3.2" height="8" fill="#0a63e8"/><rect x="12" y="11" width="3.2" height="8" fill="#0a63e8"/><rect x="18.8" y="11" width="3.2" height="8" fill="#0a63e8"/><rect x="24.8" y="11" width="3.2" height="8" fill="#0a63e8"/><rect x="3" y="20" width="28" height="3" rx="1" fill="#0a63e8"/></svg>`;
+const iconoForma = f => /efectivo/i.test(f) ? ICO_EFECTIVO : ICO_BANCO;
+
+function aviso(txt, mal=false){
+  const t = $("#toast"); t.textContent = txt; t.className = mal ? "mal" : ""; t.style.display = "block";
+  clearTimeout(aviso.h); aviso.h = setTimeout(()=>t.style.display="none", 4200);
+}
+async function api(ruta, cuerpo){
+  const op = cuerpo === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json","X-Token":TOKEN}, body:JSON.stringify(cuerpo)};
+  const r = await fetch(ruta, op);
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error || "Algo salió mal");
+  return d;
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- navegación ---------- */
+$$("aside nav button").forEach(b => b.onclick = () => {
+  const v = b.dataset.v;
+  $$("aside nav button").forEach(x => x.classList.toggle("on", x === b));
+  $$(".vista").forEach(s => s.classList.toggle("on", s.id === "v-" + v));
+  $("#bTitulo").textContent = TITULOS[v][0]; $("#bSub").textContent = TITULOS[v][1];
+  if(v === "historial") cargarHistorial();
+  if(v === "empresas") pintarEmpresasLista();
+  if(v === "licencia") cargarLicencia();
+});
+
+/* ---------- inicio ---------- */
+const docSel = () => document.querySelector('input[name=doc]:checked').value;
+const modoSel = () => document.querySelector('input[name=modo]:checked').value;
+const formaSel = () => docSel() === "recibo" ? INI.forma_recibo : ((document.querySelector('input[name=forma]:checked')||{}).value || "");
+
+function pintarEmpresas(){
+  const sel = $("#empresa"), actual = sel.value;  // sin empresa por defecto: la elige la persona
+  sel.innerHTML = `<option value="">Selecciona una empresa…</option>` + INI.empresas.map(e => `<option>${esc(e)}</option>`).join("");
+  sel.value = INI.empresas.includes(actual) ? actual : "";
+  actualizar();
+}
+function fechaTexto(){
+  const anio = +$("#anio").value, esRecibo = docSel() === "recibo";
+  const cuando = (esRecibo || anio === INI.anio_actual) ? `hoy (${INI.hoy})` : `31/12/${anio}`;
+  $("#notaFecha").innerHTML = `Desde 2021 en adelante<br>Fecha del documento: <b>${cuando}</b>`;
+}
+function pintarFormas(){
+  const recibo = docSel() === "recibo";
+  $("#formas").style.display = recibo ? "none" : "flex";
+  const f = $("#formaFija"); f.style.display = recibo ? "flex" : "none";
+  f.innerHTML = `${ICO_BANCO}<span>${esc(INI.forma_recibo)} <small>(fija para recibos)</small></span>`;
+}
+function pintarFormasOpciones(){
+  const previa = (document.querySelector('input[name=forma]:checked') || {}).value;
+  $("#formas").innerHTML = INI.formas_pago.map((f,i) =>
+    `<label class="fp"><input type="radio" name="forma" value="${esc(f)}" ${(previa ? previa===f : i===0) ? "checked":""}>${iconoForma(f)}${esc(f)}</label>`).join("");
+}
+
+function actualizar(){
+  if(!INI) return;
+  const real = modoSel() === "real";
+  $("#avisoSim").style.display = real ? "none" : "block";
+  $("#avisoReal").style.display = real ? "block" : "none";
+  fechaTexto(); pintarFormas();
+  const b = $("#btnIniciar");
+  b.classList.toggle("rojo", real);
+  $("#btnTitulo").textContent = real ? "Grabar en producción" : "Ejecutar proceso";
+  $("#btnSub").textContent = real ? "Graba documentos reales" : "Simulación: no graba nada";
+
+  const empresa = $("#empresa").value;
+  const doc = docSel() === "recibo" ? "Recibo de caja" : "Comprobante de egreso";
+  let motivo = "";
+  if(!empresa) motivo = "Falta elegir la empresa.";
+  else if(!archivo) motivo = "Falta elegir el archivo de Excel.";
+  else if(real && LIC && !LIC.permite_real) motivo = "La licencia no permite grabar: revisa la sección Licencia.";
+  else if(real && $("#confirma").value.trim() !== "GRABAR") motivo = "Escribe GRABAR para confirmar la carga real.";
+
+  $("#rEmpresa").textContent = empresa || "—";
+  $("#rDoc").textContent = `${doc} (${$("#anio").value})`;
+  $("#rForma").textContent = formaSel() || "—";
+  $("#rRegistros").textContent = archivo ? registrosArchivo : "—";
+  $("#rModo").innerHTML = real ? `<span style="color:var(--bad-d)">Graba todo</span>` : "Simulación";
+  b.disabled = corriendo || !!motivo;
+  b.title = motivo;
+  $$("#v-inicio select, #v-inicio input, #btnExcel, #btnNuevaEmpresa").forEach(x => x.disabled = corriendo);
+  $("#btnDetener").style.display = corriendo ? "block" : "none";
+  b.style.display = corriendo ? "none" : "flex";
+}
+
+/* ---------- Excel ---------- */
+async function subir(file){
+  if(!file) return;
+  if(!/\.xls[xm]$/i.test(file.name)){ aviso("El archivo debe ser Excel (.xlsx).", true); return; }
+  $("#excelTitulo").textContent = "Leyendo " + file.name + "…"; $("#excelSub").textContent = "";
+  try{
+    const r = await fetch("/api/subir", {method:"POST", headers:{"X-Token":TOKEN, "X-Nombre":encodeURIComponent(file.name)}, body:file});
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error);
+    archivo = d.archivo; registrosArchivo = d.registros;
+    $("#soltar").classList.add("listo");
+    $("#excelTitulo").textContent = d.nombre;
+    const prob = d.invalidas ? ` · ${d.invalidas} fila(s) con problemas (irán a revisar a mano)` : "";
+    $("#excelSub").textContent = `${d.registros} registros listos para procesar${prob}`;
+    $("#btnExcelTxt").textContent = "Cambiar archivo";
+  }catch(e){
+    archivo = null; $("#soltar").classList.remove("listo");
+    $("#excelTitulo").innerHTML = "Arrastra tu archivo aquí o <u>selecciona un archivo</u>";
+    $("#excelSub").textContent = "Formato permitido: .xlsx (cualquier nombre)";
+    $("#btnExcelTxt").textContent = "Seleccionar archivo";
+    aviso(e.message || "No pude leer ese archivo.", true);
+  }
+  actualizar();
+}
+const soltar = $("#soltar");
+soltar.onclick = e => { if(!corriendo && !e.target.closest("button")) $("#archivo").click(); };
+soltar.onkeydown = e => { if((e.key==="Enter"||e.key===" ") && !corriendo){ e.preventDefault(); $("#archivo").click(); } };
+$("#btnExcel").onclick = () => $("#archivo").click();
+$("#archivo").onchange = e => { subir(e.target.files[0]); e.target.value = ""; };
+["dragenter","dragover"].forEach(ev => soltar.addEventListener(ev, e => { e.preventDefault(); soltar.classList.add("sobre"); }));
+["dragleave","drop"].forEach(ev => soltar.addEventListener(ev, e => { e.preventDefault(); soltar.classList.remove("sobre"); }));
+soltar.addEventListener("drop", e => !corriendo && subir(e.dataTransfer.files[0]));
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", e => e.preventDefault());
+
+/* ---------- empresas ---------- */
+$("#btnNuevaEmpresa").onclick = () => { const f = $("#nuevaEmpresa"); f.style.display = f.style.display === "none" ? "flex" : "none"; $("#nombreNueva").focus(); };
+async function agregarEmpresa(nombre, despues){
+  try{
+    const d = await api("/api/empresas/agregar", {nombre});
+    INI.empresas = d.empresas; pintarEmpresas(); despues && despues(nombre); aviso("Empresa guardada.");
+  }catch(e){ aviso(e.message, true); }
+}
+$("#guardarEmpresa").onclick = () => { const n = $("#nombreNueva").value.trim(); agregarEmpresa(n, x => { $("#empresa").value = x; $("#nombreNueva").value=""; $("#nuevaEmpresa").style.display="none"; actualizar(); }); };
+$("#nombreNueva").onkeydown = e => e.key==="Enter" && $("#guardarEmpresa").click();
+$("#empAgregar").onclick = () => { const n = $("#empNueva").value.trim(); agregarEmpresa(n, () => { $("#empNueva").value=""; pintarEmpresasLista(); }); };
+$("#empNueva").onkeydown = e => e.key==="Enter" && $("#empAgregar").click();
+function pintarEmpresasLista(){
+  const l = $("#listaEmpresas");
+  l.innerHTML = INI.empresas.length ? INI.empresas.map(e => `<div class="item"><span class="t">${esc(e)}</span><button class="peligro" data-e="${esc(e)}" type="button">Quitar</button></div>`).join("") : `<div class="vacio">No hay empresas guardadas.</div>`;
+  $$("#listaEmpresas .peligro").forEach(b => b.onclick = async () => {
+    if(!confirm("¿Quitar esta empresa de la lista?\n\n" + b.dataset.e)) return;
+    try{ const d = await api("/api/empresas/quitar", {nombre:b.dataset.e}); INI.empresas = d.empresas; pintarEmpresas(); pintarEmpresasLista(); }catch(e){ aviso(e.message, true); }
+  });
+}
+
+/* ---------- historial ---------- */
+async function cargarHistorial(){
+  const l = $("#listaHistorial"), d = await api("/api/historial");
+  l.innerHTML = d.length ? d.map(a => `<div class="item"><span class="t">${esc(a.nombre)}</span><span class="m">${a.fecha} · ${a.kb} KB</span><a class="btn claro" style="text-decoration:none" href="/api/descargar?nombre=${encodeURIComponent(a.nombre)}">Descargar</a></div>`).join("") : `<div class="vacio">Todavía no hay resultados. Aparecerán aquí después de la primera corrida.</div>`;
+}
+$("#btnCarpeta").onclick = () => api("/api/abrir-carpeta", {}).catch(e => aviso(e.message, true));
+
+/* ---------- corrida ---------- */
+function etiqueta(n){ return n.toLowerCase().replace(/_/g," ").replace(/^./, c => c.toUpperCase()); }
+async function iniciar(){
+  const real = modoSel() === "real";
+  if(real){
+    const aviso2 = simulados.has(archivo) ? "" : "ATENCIÓN: no has simulado este archivo en esta sesión.\n\n";
+    const resumen = "Vas a GRABAR en producción:\n\n" +
+      "Empresa: " + $("#empresa").value + "\n" +
+      "Documento: " + (docSel()==="recibo" ? "Recibo de caja" : "Comprobante de egreso") + " " + $("#anio").value + "\n" +
+      "Forma de pago: " + formaSel() + "\n" +
+      "Registros en el archivo: " + registrosArchivo + "\n\n" + aviso2 + "¿Continuar?";
+    if(!confirm(resumen)) return;
+  }
+  try{
+    await api("/api/iniciar", {
+      empresa:$("#empresa").value, documento:docSel(), anio:+$("#anio").value, archivo,
+      forma_pago:(document.querySelector('input[name=forma]:checked')||{}).value || "",
+      carga_real:real, confirmacion:$("#confirma").value.trim()
+    });
+  }catch(e){ aviso(e.message, true); return; }
+  corriendo = true; indice = 0; totalRegs = 0; hechos = 0; corridaModo = real ? "real" : "sim"; corridaArchivo = archivo;
+  $("#log").innerHTML = ""; $("#final").style.display = "none"; $("#actividad").style.display = "block";
+  $("#progreso").style.width = "0"; $("#cuenta").textContent = "";
+  $("#estado").className = "estado corre"; $("#estadoTxt").textContent = "En curso…";
+  actualizar(); $("#actividad").scrollIntoView({behavior:"smooth", block:"start"});
+  clearInterval(pulso); pulso = setInterval(consultar, 1000); consultar();
+}
+async function consultar(){
+  let d; try{ d = await api("/api/estado?desde=" + indice); }catch(_){ return; }
+  const log = $("#log"), abajo = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  for(const l of d.lineas){
+    const div = document.createElement("div"); div.className = l.n;
+    div.innerHTML = `<span class="h">${l.h}</span>${esc(l.t)}`; log.appendChild(div);
+    let m = l.t.match(/Excel leído: (\d+) registros/); if(m) totalRegs = +m[1];
+    if(/^Fila \d+ \(.*\): [A-Z_]+$/.test(l.t)) hechos++;
+  }
+  indice = d.total; if(abajo) log.scrollTop = log.scrollHeight;
+  if(totalRegs){ $("#progreso").style.width = Math.min(100, hechos/totalRegs*100) + "%"; $("#cuenta").textContent = `${hechos} de ${totalRegs}`; }
+  if(!d.corriendo){
+    clearInterval(pulso); corriendo = false;
+    $("#estado").className = "estado";
+    const r = d.resumen;
+    if(corridaModo === "sim" && !d.error && r && !r.detenida) simulados.add(corridaArchivo);
+    $("#estadoTxt").textContent = d.error ? "Terminó con error" : (r && r.detenida ? "Detenida" : "Terminó");
+    $("#final").style.display = "block";
+    $("#finalTitulo").textContent = d.error ? "No se pudo completar: " + d.error : (r && r.detenida ? "Corrida detenida" : "Corrida terminada");
+    const c = $("#conteos"); c.innerHTML = "";
+    if(r) Object.entries(r.conteo).forEach(([k,v]) => {
+      const s = document.createElement("span");
+      s.className = "conteo" + (k==="CARGADO" ? " cargado" : /ERROR/.test(k) ? " mal" : /REVISAR/.test(k) ? " rev" : "");
+      s.textContent = `${etiqueta(k)}: ${v}`; c.appendChild(s);
+    });
+    $("#btnResultado").style.display = r && r.ruta ? "inline-flex" : "none";
+    $("#btnResultado").onclick = () => location.href = "/api/descargar?nombre=" + encodeURIComponent(r.ruta);
+    actualizar();
+  }
+}
+$("#btnIniciar").onclick = iniciar;
+$("#btnDetener").onclick = async () => {
+  if(!confirm("¿Detener? Termina el registro en curso y para.")) return;
+  try{ await api("/api/detener", {}); aviso("Deteniendo al terminar el registro en curso…"); }catch(e){ aviso(e.message, true); }
+};
+
+
+/* ---------- licencia ---------- */
+const NOMBRES_LIC = {activa:"Activa", por_vencer:"Por vencer", gracia:"En período de gracia", vencida:"Vencida",
+  sin_licencia:"Sin licencia", invalida:"No válida", otro_equipo:"Es de otro equipo", reloj:"Fecha del equipo alterada", sin_clave:"Falta la clave pública", sin_libreria:"Falta instalar cryptography"};
+function pintarLicencia(){
+  if(!LIC) return;
+  const b = $("#licBanner");
+  if(LIC.nivel === "ok"){ b.style.display = "none"; }
+  else{ b.className = "lic-banner " + LIC.nivel; b.style.display = "flex"; $("#licBannerTxt").textContent = LIC.mensaje; }
+  $("#licEstado").textContent = NOMBRES_LIC[LIC.codigo] || LIC.codigo;
+  $("#licEstado").className = "lic-estado " + LIC.nivel;
+  $("#licCliente").textContent = LIC.cliente || "—";
+  $("#licVence").textContent = LIC.vence || "—";
+  $("#licDias").textContent = LIC.dias_restantes == null ? "—" : (LIC.dias_restantes >= 0 ? LIC.dias_restantes : "Venció hace " + (-LIC.dias_restantes) + " día(s)");
+  $("#licGracia").textContent = `${LIC.dias_gracia} día(s) de gracia; luego solo simulación`;
+  $("#licEquipo").textContent = LIC.equipo;
+  actualizar();
+}
+async function cargarLicencia(){
+  try{ LIC = await api("/api/licencia"); pintarLicencia(); }
+  catch(e){
+    $("#licEstado").textContent = "No se pudo consultar"; $("#licEstado").className = "lic-estado bad";
+    const b = $("#licBanner"); b.className = "lic-banner bad"; b.style.display = "flex";
+    $("#licBannerTxt").textContent = "No se pudo consultar la licencia. Cierra NeyBot (incluida la consola negra) y ábrelo de nuevo con iniciar_web.bat.";
+  }
+}
+$("#licBannerBtn").onclick = () => document.querySelector('aside nav button[data-v=licencia]').click();
+$("#licCopiar").onclick = async () => { try{ await navigator.clipboard.writeText(LIC.equipo); aviso("ID copiado."); }catch(_){ aviso("Selecciona el ID y cópialo con Ctrl+C.", true); } };
+$("#licArchivoBtn").onclick = () => $("#licArchivo").click();
+$("#licArchivo").onchange = async e => { const f = e.target.files[0]; if(f){ $("#licCodigo").value = (await f.text()).trim(); } e.target.value = ""; };
+$("#licActivar").onclick = async () => {
+  const codigo = $("#licCodigo").value.trim();
+  if(!codigo){ aviso("Pega el código de licencia primero.", true); return; }
+  try{ LIC = await api("/api/licencia/activar", {codigo}); $("#licCodigo").value = ""; pintarLicencia(); aviso("Licencia activada."); }
+  catch(e){ aviso(e.message, true); }
+};
+
+/* ---------- arranque ---------- */
+async function arrancar(){
+  INI = await api("/api/inicio"); TOKEN = INI.token;
+  await cargarLicencia();
+  $("#anio").innerHTML = INI.anios.map(a => `<option>${a}</option>`).join("");
+  pintarEmpresas(); pintarFormasOpciones();
+  ["change","input"].forEach(ev => $("#v-inicio").addEventListener(ev, actualizar));
+  const est = await api("/api/estado?desde=0");
+  if(est.corriendo){ corriendo = true; $("#actividad").style.display = "block"; $("#estado").className = "estado corre"; $("#estadoTxt").textContent = "En curso…"; pulso = setInterval(consultar, 1000); consultar(); }
+  actualizar();
+}
+arrancar().catch(() => aviso("No pude conectar con el programa. Ciérralo y ábrelo de nuevo.", true));
+</script>
+</body>
+</html>

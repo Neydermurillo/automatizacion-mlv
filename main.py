@@ -1,7 +1,8 @@
 import os
 import re
 import sys
-from dataclasses import fields, replace
+from collections import Counter
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from functools import partial
 from datetime import date
@@ -9,6 +10,7 @@ from datetime import date
 from playwright.sync_api import sync_playwright
 
 from src.config import Config, cargar_config
+from src import licencia
 from src.excel_io import RegistroExcel, ResultadosExcel, leer_registros
 from src.logger import crear_logger
 from src.pages.comprobante_egreso_page import ComprobanteEgresoPage
@@ -34,6 +36,7 @@ from src.validacion import (
 )
 
 MAX_ERRORES_SEGUIDOS = 3
+ANIO_MINIMO = 2021  # primer año de documentos que se puede elegir
 
 OPCIONES_PAGO = {
     "1": "PAGO EN EFECTIVO",
@@ -440,60 +443,82 @@ def procesar_recibo(
     return Resultado(Decision.CARGADO, f"{describir_comprobante(coincidentes[0])}. {detalle}")
 
 
-def main() -> None:
-    limite = int(sys.argv[1]) if len(sys.argv) > 1 else None
-    desde = int(sys.argv[2]) if len(sys.argv) > 2 else None
-    try:
-        from dotenv import load_dotenv
+@dataclass(frozen=True)
+class Corrida:
+    """Lo que se elige antes de empezar (por consola o en la ventana gráfica)."""
 
-        load_dotenv()
-    except ImportError:
-        pass
-    empresa = elegir_empresa_consola(os.getenv("DS_EMPRESA", "").strip())
+    empresa: str
+    tipo: TipoDocumento
+    anio: int  # año de los documentos de cartera que se marcan
+    forma_pago: str
+    limite: int | None = None  # cuántos registros revisar (None = todos)
+    desde: int | None = None  # primera fila del Excel a procesar
+    carga_real: bool = False
+    max_cargas: int = 1
+
+
+def anios_disponibles(hoy: date | None = None) -> list[int]:
+    """Del año en curso hacia atrás hasta 2021 (el más reciente primero)."""
+    hoy = hoy or date.today()
+    return list(range(hoy.year, ANIO_MINIMO - 1, -1))
+
+
+def fecha_del_documento(anio: int, hoy: date | None = None) -> date:
+    """Año en curso: fecha de hoy. Años anteriores: 31/12 de ese año."""
+    hoy = hoy or date.today()
+    return hoy if anio == hoy.year else date(anio, 12, 31)
+
+
+def con_empresa(config: Config, empresa: str) -> Config:
+    """Fija la empresa en la configuración (y en el entorno, por si se vuelve a leer el .env)."""
     os.environ["DS_EMPRESA"] = empresa
-    config = cargar_config()
-    for campo in fields(config):  # por si el .env se volvió a leer y pisó la elección
+    for campo in fields(config):
         if "empresa" in campo.name.lower() and isinstance(getattr(config, campo.name), str):
             config = replace(config, **{campo.name: empresa})
+    return config
 
-    if config.carga_real and not limite:
-        sys.exit(
-            "Con CARGA_REAL=true indica cuántos registros revisar, p. ej.: python main.py 5"
-        )
 
-    tipo, con_fecha_de_hoy = elegir_tipo_documento_consola()
-    es_recibo = tipo == TipoDocumento.RECIBO_CAJA
+def describir_corrida(corrida: Corrida) -> str:
+    fecha = fecha_del_documento(corrida.anio)
+    return (
+        f"Empresa: {corrida.empresa} | Documento: {corrida.tipo.value} | "
+        f"documentos de {corrida.anio} | fecha {fecha:%d/%m/%Y} | "
+        f"forma de pago: {corrida.forma_pago}"
+    )
+
+
+def ejecutar_corrida(corrida: Corrida, config_base: Config, logger, parar=None) -> dict:
+    """Procesa el Excel completo con las opciones elegidas. Sirve a la consola y a la ventana.
+
+    `parar` es una función opcional: si devuelve True, la corrida se detiene al terminar el
+    registro en curso. Devuelve un resumen con la ruta del Excel de resultados y los conteos.
+    """
+    hoy = date.today()
+    if not ANIO_MINIMO <= corrida.anio <= hoy.year:
+        raise ValueError(f"El año debe estar entre {ANIO_MINIMO} y {hoy.year}")
+    if corrida.carga_real and corrida.max_cargas < 1:
+        raise ValueError("Con carga real hay que indicar el máximo de documentos a grabar")
+    if corrida.carga_real:
+        licencia.exigir_carga_real()  # sin licencia vigente solo se permite simular
+
+    es_recibo = corrida.tipo == TipoDocumento.RECIBO_CAJA
+    anio_en_curso = corrida.anio == hoy.year
     etiqueta_documento = (
-        f"{nombre_para_archivo(empresa)}_"
+        f"{nombre_para_archivo(corrida.empresa)}_"
         + ("Recibo de caja" if es_recibo else "Comprobante de egreso")
+        + f" {corrida.anio}"
     )
-    if es_recibo:
-        # Recibos: fecha del día de ejecución y forma de pago fija.
-        config = replace(config, fecha_pago=date.today(), forma_pago=FORMA_PAGO_RECIBO)
-    else:
-        forma = elegir_forma_pago_consola()
-        if con_fecha_de_hoy:
-            # Egreso del año en curso: fecha del día de ejecución y documentos de ese año.
-            config = replace(config, fecha_pago=date.today(), forma_pago=forma)
-        else:
-            config = replace(config, forma_pago=forma)
-    logger = crear_logger(config.dir_logs)
-    texto = (
-        f"Empresa: {empresa} | Documento: {tipo.value} | fecha {config.fecha_pago:%d/%m/%Y} | "
-        f"forma de pago: {config.forma_pago}"
+    config = con_empresa(config_base, corrida.empresa)
+    config = replace(
+        config,
+        fecha_pago=fecha_del_documento(corrida.anio),
+        forma_pago=FORMA_PAGO_RECIBO if es_recibo else corrida.forma_pago,
+        carga_real=corrida.carga_real,
+        max_cargas=corrida.max_cargas,
     )
-    print(texto)
-    logger.info(texto)
-
+    limite, desde = corrida.limite, corrida.desde
+    logger.info(describir_corrida(corrida))
     if config.carga_real:
-        print(
-            f"CARGA REAL ACTIVADA: se revisarán hasta {limite} registros y se grabarán "
-            f"hasta {config.max_cargas} documento(s) en PRODUCCIÓN ({tipo.value}) de la empresa "
-            f"{empresa}, con forma de pago: "
-            f"{config.forma_pago}."
-        )
-        if input("Escribe GRABAR para continuar: ").strip() != "GRABAR":
-            sys.exit("Cancelado.")
         logger.warning(f"CARGA REAL activada (máximo {config.max_cargas} comprobante(s))")
 
     registros, invalidas = leer_registros(config)
@@ -523,6 +548,9 @@ def main() -> None:
         if not _es_fila_sin_datos(invalida):
             resultados.agregar_invalida(invalida)
 
+    conteo: Counter = Counter()
+    resumen = {"ruta": None, "conteo": conteo, "total": len(registros), "detenida": False}
+
     with sync_playwright() as p:
         navegador = p.chromium.launch(
             channel=config.canal_navegador, headless=config.headless, args=["--start-maximized"]
@@ -539,16 +567,22 @@ def main() -> None:
             pagina_ce.abrir()
             pagina_ce.fijar_filtros()
 
+            if es_recibo:
+                tramitar = procesar_recibo
+            else:
+                # Año en curso: "ya ingresado" si hay uno de cualquier fecha del año con el
+                # mismo valor. Años anteriores: solo si hay uno con la fecha 31/12 de ese año.
+                tramitar = partial(procesar, todo_el_anio=anio_en_curso)
+
             errores_seguidos = 0
             cargas = 0
             for registro in registros:
+                if parar and parar():
+                    logger.warning("Corrida detenida por el usuario")
+                    resumen["detenida"] = True
+                    break
                 detener = False
                 try:
-                    tramitar = (
-                        procesar_recibo
-                        if es_recibo
-                        else partial(procesar, todo_el_anio=con_fecha_de_hoy)
-                    )
                     resultado = tramitar(registro, pagina_ce, config, logger)
                     errores_seguidos = 0
                     if resultado.decision == Decision.CARGADO:
@@ -583,6 +617,7 @@ def main() -> None:
                         logger.exception("No se pudo limpiar la pantalla tras el error")
 
                 resultados.agregar(registro, resultado.decision, resultado.motivo)
+                conteo[resultado.decision.name] += 1
                 logger.info(f"Fila {registro.fila} ({registro.nit}): {resultado.decision.name}")
 
                 if detener:
@@ -600,15 +635,63 @@ def main() -> None:
         except Exception:
             logger.exception("El proceso terminó con error")
         finally:
-            if "resultados" in locals():
-                ruta_final = renombrar_resultado(resultados.ruta, etiqueta_documento, logger)
-                logger.info(f"Resultados guardados en {ruta_final}")
+            ruta_final = renombrar_resultado(resultados.ruta, etiqueta_documento, logger)
+            resumen["ruta"] = ruta_final
+            logger.info(f"Resultados guardados en {ruta_final}")
             if pagina_ce is not None:
                 try:
                     pagina_ce.cerrar_formularios_abiertos()
                 except Exception:
                     logger.exception("No se pudo cerrar el formulario abierto; ciérralo a mano")
             navegador.close()
+    return resumen
+
+
+def main() -> None:
+    """Versión por consola: pregunta lo necesario y ejecuta la corrida."""
+    limite = int(sys.argv[1]) if len(sys.argv) > 1 else None
+    desde = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
+    empresa = elegir_empresa_consola(os.getenv("DS_EMPRESA", "").strip())
+    config = con_empresa(cargar_config(), empresa)
+
+    if config.carga_real and not limite:
+        sys.exit(
+            "Con CARGA_REAL=true indica cuántos registros revisar, p. ej.: python main.py 5"
+        )
+
+    tipo, con_fecha_de_hoy = elegir_tipo_documento_consola()
+    es_recibo = tipo == TipoDocumento.RECIBO_CAJA
+    anio = date.today().year if con_fecha_de_hoy else 2025
+    forma = FORMA_PAGO_RECIBO if es_recibo else elegir_forma_pago_consola()
+    corrida = Corrida(
+        empresa=empresa,
+        tipo=tipo,
+        anio=anio,
+        forma_pago=forma,
+        limite=limite,
+        desde=desde,
+        carga_real=config.carga_real,
+        max_cargas=config.max_cargas,
+    )
+    logger = crear_logger(config.dir_logs)
+    print(describir_corrida(corrida))
+
+    if corrida.carga_real:
+        print(
+            f"CARGA REAL ACTIVADA: se revisarán hasta {limite} registros y se grabarán "
+            f"hasta {corrida.max_cargas} documento(s) en PRODUCCIÓN ({tipo.value}) de la empresa "
+            f"{empresa}, con forma de pago: {forma}."
+        )
+        if input("Escribe GRABAR para continuar: ").strip() != "GRABAR":
+            sys.exit("Cancelado.")
+
+    ejecutar_corrida(corrida, config, logger)
 
 
 if __name__ == "__main__":
